@@ -12,28 +12,34 @@
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ * Use Teensy XInput library from here: https://github.com/zlittell/MSF-XINPUT
+ * 
  * Adapted from http://havencking.blogspot.com
  *
  * For more info about the Wii Classic Controller, see:
  * http://wiibrew.org/wiki/Wiimote/Extension_Controllers/Classic_Controller
  */
 
-// Testing script making sure everything's wired up correctly
 
 // the improved Wire I2C library
 // see:  https://www.pjrc.com/teensy/td_libs_Wire.html
 #include "i2c_t3.h"
+#include <xinput.h>
+#define LEDPIN 13
+
+XINPUT controller(LED_ENABLED, LEDPIN);
 
 // an array to store the six bytes of controller status
 int buttons[6];
 
 // the analog controls
-int LX;
-int LY;
+int LX = 32;
+int LY = 32;
 int LT;
-int RX;
-int RY;
+int RX = 16;
+int RY = 16;
 int RT;
+int trigger_deadzone = 6;
 
 // the digital controls
 bool BDR;
@@ -54,48 +60,83 @@ bool BDU;
 
 bool was_connected;
 
+void feed_data_to_xinput()
+{
+  // Update buttons
+  controller.buttonUpdate(BUTTON_A, !BB);
+  controller.buttonUpdate(BUTTON_B, !BA);
+  controller.buttonUpdate(BUTTON_X, !BY);
+  controller.buttonUpdate(BUTTON_Y, !BX);
+  controller.buttonUpdate(BUTTON_LB, !BZL);
+  controller.buttonUpdate(BUTTON_RB, !BZR);
+  // These buttons don't actually exist on classic controller, hope you don't need them
+  //controller.buttonUpdate(BUTTON_L3, !);
+  //controller.buttonUpdate(BUTTON_R3, !);
+  controller.buttonUpdate(BUTTON_START, !Bplus);
+  controller.buttonUpdate(BUTTON_BACK, !Bminus);
+  controller.buttonUpdate(BUTTON_LOGO, !BH);
+
+  // Most importantly, update DPAD (this is why I want to play with Classic Controller!)
+  controller.dpadUpdate(!BDU, !BDD, !BDL, !BDR);
+
+  // Digital triggers should be enough for everyone
+  BLT = BLT && LT < trigger_deadzone;
+  BRT = BRT && RT < trigger_deadzone;
+  controller.triggerUpdate((BLT ? 0 : 0xFF), (BRT ? 0 : 0xFF));
+
+  // Update sticks, xinput allows whole lot more precision than the Classic Controller can afford
+  controller.stickUpdate(STICK_LEFT, (LX - 32) * 1000, (LY - 32) * 1000);
+  controller.stickUpdate(STICK_RIGHT, (RX - 16) * 2000, (RY - 16) * 2000);
+
+  //Update the LED display
+  controller.LEDUpdate();
+
+  //Send data
+  controller.sendXinput();
+
+  //Receive data
+  controller.receiveXinput();
+}
+
 void setup() {
   Wire.begin();
-  Serial.begin(9600);
-
-  // initialize Joystick
-  // see: https://www.pjrc.com/teensy/td_joystick.html
-  //Joystick.useManualSend(true);
+  was_connected = true; // Run reset on first loop
 }
 
 void loop() {
+  // Make sure the controller is connected.
+  // I have the middle pin connected to teensy-lc pin 14 
   if (analogRead(A0) < 500)
   {
     // Controller not connected
     if (was_connected)
     {
       // Was connected previously, reset everything
-      LX = 0;
-      LY = 0;
+      LX = 32;
+      LY = 32;
       LT = 0;
-      RX = 0;
-      RY = 0;
+      RX = 16;
+      RY = 16;
       RT = 0;
 
-      BDR = false;
-      BDD = false;
-      BLT = false;
-      Bminus = false;
-      BH = false;
-      Bplus = false;
-      BRT = false;
-      BZL = false;
-      BB = false;
-      BY = false;
-      BA = false;
-      BX = false;
-      BZR = false;
-      BDL = false;
-      BDU = false;
+      BDR = true;
+      BDD = true;
+      BLT = true;
+      Bminus = true;
+      BH = true;
+      Bplus = true;
+      BRT = true;
+      BZL = true;
+      BB = true;
+      BY = true;
+      BA = true;
+      BX = true;
+      BZR = true;
+      BDL = true;
+      BDU = true;
 
       was_connected = false;
-
-      Serial.println("Disconnected");
+      /*digitalWrite(13, LOW);*/
     }
 
   }
@@ -109,6 +150,7 @@ void loop() {
       // request the 6 bytes of controller status and store in the buttons array
       Wire.requestFrom(0x52, 6);
       while (Wire.available()) {
+
         for (int i = 0; i < 6; i++) {
           buttons[i] = Wire.receive();
         }
@@ -139,84 +181,19 @@ void loop() {
         BDL = (buttons[5] >> 1) & B00000001;
         BDU = buttons[5] & B00000001;
 
-        // set the status of the controls mapped as a USB Joystick
-        // see: https://www.pjrc.com/teensy/td_joystick.html
-        // analog controls
-        // Joystick.X(LX);// / 64 * 1024);        // "value" is from 0 to 1023
-        // Joystick.Y(LY);// / 64 * 1024);        //   512 is resting position
-        // Joystick.Z(RX);// / 32 * 1024);
-        // Joystick.Zrotate(RY);// / 32 * 1024);
-        // Joystick.sliderLeft(LT);// / 32 * 1024);
-        // Joystick.sliderRight(RT);// / 32 * 1024);
-        // digital controls
-        // renumber these buttons as you see fit
-        // Joystick.button(15, !BDR);
-        // Joystick.button(13, !BDD);
-        // Joystick.button(5, !BLT);
-        // Joystick.button(9, !Bminus);
-        // Joystick.button(11, !BH);
-        // Joystick.button(10, !Bplus);
-        // Joystick.button(6, !BRT);
-        // Joystick.button(7, !BZL);
-        // Joystick.button(2, !BB);
-        // Joystick.button(1, !BY);
-        // Joystick.button(3, !BA);
-        // Joystick.button(4, !BX);
-        // Joystick.button(8, !BZR);
-        // Joystick.button(14, !BDL);
-        // Joystick.button(12, !BDU);
-
-        // send the controls over USB as a Joystick
-        // Joystick.send_now();
+        // restart at the beginning of the address space
+        Wire.beginTransmission(0x52);
+        Wire.write(0x00);
+        Wire.endTransmission();
       }
-      // restart at the beginning of the address space
-      Wire.beginTransmission(0x52);
-      Wire.write(0x00);
-      Wire.endTransmission();
 
-
-      Serial.print("> ");
-
-      if (!BDR) Serial.print("BDR ");
-      if (!BDD) Serial.print("BDD ");
-      if (!BLT) Serial.print("BLT ");
-      if (!Bminus) Serial.print("Bminus ");
-      if (!BH) Serial.print("BH ");
-      if (!Bplus) Serial.print("Bplus ");
-      if (!BRT) Serial.print("BRT ");
-      if (!BZL) Serial.print("BZL ");
-      if (!BB) Serial.print("BB ");
-      if (!BY) Serial.print("BY ");
-      if (!BA) Serial.print("BA ");
-      if (!BX) Serial.print("BX ");
-      if (!BZR) Serial.print("BZR ");
-      if (!BDL) Serial.print("BDL ");
-      if (!BDU) Serial.print("BDU ");
-
-      Serial.print("LX: ");
-      Serial.print(LX);
-      Serial.print("LY: ");
-      Serial.print(LY);
-      Serial.print("RX: ");
-      Serial.print(RX);
-      Serial.print("RY: ");
-      Serial.print(RY);
-      Serial.print("LT: ");
-      Serial.print(LT);
-      Serial.print("RT: ");
-      Serial.print(RT);
-
-      Serial.println(" <");
-
-      delay(100); // don't read too fast
     }
 
     else
     {
-      delay(200);
       // Start Talking to controller
-      Serial.println("Starting communications...");
-
+      // Short delay to allow Classic Controller to wake up
+      delay(200);
 
       // initialize Wii I2C using "the new way"
       // see: http://wiibrew.org/wiki/Wiimote/Extension_Controllers
@@ -229,16 +206,15 @@ void loop() {
       Wire.write(0x00);
 
       was_connected = Wire.endTransmission();
-      if (was_connected)
+      /*if (was_connected)
       {
-        Serial.println("Seems like we connected successfully");
-      }
-      else
-      {
-        Serial.println("Failed to connect");
-        delay(100);
-      }
+        digitalWrite(13, HIGH);
+      }*/
+
 
     }
   }
+
+  feed_data_to_xinput();
+  delay(1); // This seems to be necessary or the Classic Controller chokes
 }
