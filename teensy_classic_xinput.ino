@@ -26,6 +26,10 @@
 #include "i2c_t3.h"
 #include <xinput.h>
 #define LEDPIN 13
+#define ShoulderSwap 2
+#define KeySwap 3
+#define AnalogShoulders 4
+#define ResetPin 5
 
 XINPUT controller(LED_ENABLED, LEDPIN);
 
@@ -58,6 +62,8 @@ bool BZR;
 bool BDL;
 bool BDU;
 
+bool shoulder_swap;
+
 bool was_connected;
 
 void feed_data_to_xinput()
@@ -67,8 +73,6 @@ void feed_data_to_xinput()
   controller.buttonUpdate(BUTTON_B, !BA);
   controller.buttonUpdate(BUTTON_X, !BY);
   controller.buttonUpdate(BUTTON_Y, !BX);
-  controller.buttonUpdate(BUTTON_LB, !BZL);
-  controller.buttonUpdate(BUTTON_RB, !BZR);
   // These buttons don't actually exist on classic controller, hope you don't need them
   //controller.buttonUpdate(BUTTON_L3, !);
   //controller.buttonUpdate(BUTTON_R3, !);
@@ -82,7 +86,18 @@ void feed_data_to_xinput()
   // Digital triggers should be enough for everyone
   BLT = BLT && LT < trigger_deadzone;
   BRT = BRT && RT < trigger_deadzone;
-  controller.triggerUpdate((BLT ? 0 : 0xFF), (BRT ? 0 : 0xFF));
+  if (shoulder_swap)
+  {
+    controller.triggerUpdate((BZL ? 0 : 0xFF), (BZR ? 0 : 0xFF));
+    controller.buttonUpdate(BUTTON_LB, !BLT);
+    controller.buttonUpdate(BUTTON_RB, !BRT);
+  }
+  else
+  {
+    controller.triggerUpdate((BLT ? 0 : 0xFF), (BRT ? 0 : 0xFF));
+    controller.buttonUpdate(BUTTON_LB, !BZL);
+    controller.buttonUpdate(BUTTON_RB, !BZR);
+  }
 
   // Update sticks, xinput allows whole lot more precision than the Classic Controller can afford
   controller.stickUpdate(STICK_LEFT, (LX - 32) * 1000, (LY - 32) * 1000);
@@ -98,9 +113,42 @@ void feed_data_to_xinput()
   controller.receiveXinput();
 }
 
+void reset_values() {
+  LX = 32;
+  LY = 32;
+  LT = 0;
+  RX = 16;
+  RY = 16;
+  RT = 0;
+
+  BDR = true;
+  BDD = true;
+  BLT = true;
+  Bminus = true;
+  BH = true;
+  Bplus = true;
+  BRT = true;
+  BZL = true;
+  BB = true;
+  BY = true;
+  BA = true;
+  BX = true;
+  BZR = true;
+  BDL = true;
+  BDU = true;
+
+  was_connected = false;
+}
+
 void setup() {
   Wire.begin();
-  was_connected = true; // Run reset on first loop
+
+  pinMode(ShoulderSwap, INPUT_PULLUP);
+  pinMode(KeySwap, INPUT_PULLUP);
+  pinMode(AnalogShoulders, INPUT_PULLUP);
+  pinMode(ResetPin, INPUT_PULLUP);
+
+  reset_values();
 }
 
 void loop() {
@@ -112,30 +160,7 @@ void loop() {
     if (was_connected)
     {
       // Was connected previously, reset everything
-      LX = 32;
-      LY = 32;
-      LT = 0;
-      RX = 16;
-      RY = 16;
-      RT = 0;
-
-      BDR = true;
-      BDD = true;
-      BLT = true;
-      Bminus = true;
-      BH = true;
-      Bplus = true;
-      BRT = true;
-      BZL = true;
-      BB = true;
-      BY = true;
-      BA = true;
-      BX = true;
-      BZR = true;
-      BDL = true;
-      BDU = true;
-
-      was_connected = false;
+      reset_values();
       /*digitalWrite(13, LOW);*/
     }
 
@@ -185,6 +210,8 @@ void loop() {
         Wire.beginTransmission(0x52);
         Wire.write(0x00);
         Wire.endTransmission();
+
+        shoulder_swap = digitalRead(ShoulderSwap);
       }
 
     }
@@ -216,5 +243,13 @@ void loop() {
   }
 
   feed_data_to_xinput();
+
+  if (digitalRead(ResetPin))
+  {
+    delay(2000);
+    if (digitalRead(ResetPin))
+      controller.bootloaderJump();
+  }
+
   delay(1); // This seems to be necessary or the Classic Controller chokes
 }
