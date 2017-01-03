@@ -14,7 +14,7 @@
  *
  * Use Teensy XInput library from here: https://github.com/zlittell/MSF-XINPUT
  * 
- * Adapted from http://havencking.blogspot.com
+ * Adapted from https://havencking.blogspot.fi/2015/12/teensy-usb-wii-classic-controller.html
  *
  * For more info about the Wii Classic Controller, see:
  * http://wiibrew.org/wiki/Wiimote/Extension_Controllers/Classic_Controller
