@@ -9,7 +9,7 @@ Tested to work with original Classic Controller, Classic Controller Pro and NES 
 
 # Features
 - All buttons work and are matched to same positions as XBox Controller
-- Sticks work, but need to be calibrated (Automatic calibration planned)
+- Sticks work, but need to be calibrated (Automatic calibration planned, but I mainly created this to play games with Classic Controller's great dpad)
 - Shoulder buttons work, but no analog (Analog functionality might be added in future)
 - Gracefully handles un/plugging controller
 - Shoulder swap (Swap which shoulder buttons map to triggers and bumpers)
