@@ -26,10 +26,13 @@
 #include "i2c_t3.h"
 #include <xinput.h>
 #define LEDPIN 13
-#define ShoulderSwap 2
-#define KeySwap 3
-#define AnalogShoulders 4
-#define ResetPin 5
+#define SHOULDER_SWAP 2
+#define DISABLE_STICKS 3
+#define ANALOG_SHOULDERS 4
+#define RESET_PIN 5
+
+#define STICK_MIN -32768
+#define STICK_MAX 32767
 
 XINPUT controller(LED_ENABLED, LEDPIN);
 
@@ -39,11 +42,25 @@ int buttons[6];
 // the analog controls
 int LX = 32;
 int LY = 32;
+int LX_out = 0;
+int LY_out = 0;
 int LT;
 int RX = 16;
 int RY = 16;
+int RX_out = 16;
+int RY_out = 16;
 int RT;
 int trigger_deadzone = 6;
+
+int max_LXP = 16;
+int max_LXN = -16;
+int max_LYP = 16;
+int max_LYN = -16;
+
+int max_RXP = 8;
+int max_RXN = -8;
+int max_RYP = 8;
+int max_RYN = -8;
 
 // the digital controls
 bool BDR;
@@ -99,9 +116,65 @@ void feed_data_to_xinput()
     controller.buttonUpdate(BUTTON_RB, !BZR);
   }
 
+  // Calibration
+  // Classic Controller has very low precision on the sticks and it doesn't
+  // even use the full range!
+
+  // Left Stick
+  LX_out = LX - 32;
+  LY_out = LY - 32;
+
+  if (LX_out > 0)
+  {
+    max_LXP = max(LX_out, max_LXP);
+    LX_out = STICK_MAX * LX_out / max_LXP;
+  }
+  else
+  {
+    max_LXN = min(LX_out, max_LXN);
+    LX_out = STICK_MIN * LX_out / max_LXN ;
+  }
+
+  if (LY_out > 0)
+  {
+    max_LYP = max(LY_out, max_LYP);
+    LY_out = STICK_MAX * LY_out / max_LYP;
+  }
+  else
+  {
+    max_LYN = min(LY_out, max_LYN);
+    LY_out = STICK_MIN * LY_out / max_LYN;
+  }
+
+  // Right Stick
+  RX_out = RX - 16;
+  RY_out = RY - 16;
+
+  if (RX_out > 0)
+  {
+    max_RXP = max(RX_out, max_RXP);
+    RX_out = STICK_MAX * RX_out / max_RXP;
+  }
+  else
+  {
+    max_RXN = min(RX_out, max_RXN);
+    RX_out = STICK_MIN * RX_out / max_RXN;
+  }
+
+  if (RY_out > 0)
+  {
+    max_RYP = max(RY_out, max_RYP);
+    RY_out = STICK_MAX * RY_out / max_RYP;
+  }
+  else
+  {
+    max_RYN = min(RY_out, max_RYN);
+    RY_out = STICK_MIN * RY_out / max_RYN;
+  }
+
   // Update sticks, xinput allows whole lot more precision than the Classic Controller can afford
-  controller.stickUpdate(STICK_LEFT, (LX - 32) * 1000, (LY - 32) * 1000);
-  controller.stickUpdate(STICK_RIGHT, (RX - 16) * 2000, (RY - 16) * 2000);
+  controller.stickUpdate(STICK_LEFT, LX_out, LY_out);
+  controller.stickUpdate(STICK_RIGHT, RX_out, RY_out);
 
   //Update the LED display
   controller.LEDUpdate();
@@ -143,10 +216,10 @@ void reset_values() {
 void setup() {
   Wire.begin();
 
-  pinMode(ShoulderSwap, INPUT_PULLUP);
-  pinMode(KeySwap, INPUT_PULLUP);
-  pinMode(AnalogShoulders, INPUT_PULLUP);
-  pinMode(ResetPin, INPUT_PULLUP);
+  pinMode(SHOULDER_SWAP, INPUT_PULLUP);
+  pinMode(DISABLE_STICKS, INPUT_PULLUP);
+  pinMode(ANALOG_SHOULDERS, INPUT_PULLUP);
+  pinMode(RESET_PIN, INPUT_PULLUP);
 
   reset_values();
 }
@@ -211,7 +284,7 @@ void loop() {
         Wire.write(0x00);
         Wire.endTransmission();
 
-        shoulder_swap = digitalRead(ShoulderSwap);
+        shoulder_swap = !digitalRead(SHOULDER_SWAP);
       }
 
     }
@@ -242,14 +315,38 @@ void loop() {
     }
   }
 
+  if (!digitalRead(DISABLE_STICKS))
+  {
+    // Disabling sticks also resets calibration
+    max_LXP = 16;
+    max_LXN = -16;
+    max_LYP = 16;
+    max_LYN = -16;
+
+    max_RXP = 8;
+    max_RXN = -8;
+    max_RYP = 8;
+    max_RYN = -8;
+
+    LX = 32;
+    LY = 32;
+    RX = 16;
+    RY = 16;
+  }
+
   feed_data_to_xinput();
 
-  if (digitalRead(ResetPin))
+  if (!digitalRead(RESET_PIN))
   {
     delay(2000);
-    if (digitalRead(ResetPin))
+    if (!digitalRead(RESET_PIN))
       controller.bootloaderJump();
   }
 
   delay(1); // This seems to be necessary or the Classic Controller chokes
+}
+
+int lerp(int a, int b, float t)
+{
+  return (int) (1-t)*a + t*b;
 }
